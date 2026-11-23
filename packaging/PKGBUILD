@@ -1,0 +1,72 @@
+# Maintainer: Funbinet <funbinet@gmail.com>
+pkgname=loute
+pkgver=0.0.0
+pkgrel=1
+pkgdesc="LOUTE - Autonomous Bug Bounty Framework"
+arch=('x86_64')
+url="https://github.com/funbinet"
+license=('custom:proprietary')
+depends=('gtk3' 'glibc')
+makedepends=('flutter' 'rust' 'cargo')
+source=()
+sha256sums=()
+
+# This PKGBUILD packages a prebuilt Linux bundle.
+# Build the bundle first from repo root:
+#   cd loute && flutter build linux --release
+# Then run makepkg from packaging/:
+#   makepkg -f --noextract
+
+package() {
+  local repo_root="$startdir/.."
+  local bundle="$repo_root/loute/build/linux/x64/release/bundle"
+  if [ ! -d "$bundle" ]; then
+    bundle="$repo_root/loute/build/linux/$(uname -m)/release/bundle"
+  fi
+  if [ ! -d "$bundle" ]; then
+    bundle="$(find "$repo_root/loute/build/linux" -type d -path '*/release/bundle' | head -n1)"
+  fi
+  if [ ! -d "$bundle" ]; then
+    echo "Bundle not found. Build first: (cd $repo_root/loute && flutter pub get && flutter build linux --release)" >&2
+    return 1
+  fi
+
+  install -dm755 "$pkgdir/usr/bin" "$pkgdir/usr/lib/$pkgname" \
+    "$pkgdir/usr/share/applications" "$pkgdir/usr/share/icons/hicolor/128x128/apps"
+
+  cp -r "$bundle/"* "$pkgdir/usr/lib/$pkgname/"
+
+  # Include Rust FRB shared library (not always bundled by Flutter linux build)
+  local rust_lib="$repo_root/rust/target/release/libloute_core.so"
+  if [ -f "$rust_lib" ]; then
+    install -Dm755 "$rust_lib" "$pkgdir/usr/lib/$pkgname/lib/libloute_core.so"
+  fi
+
+  cat > "$pkgdir/usr/bin/$pkgname" <<'EOF'
+#!/bin/bash
+cd /usr/lib/loute
+export LD_LIBRARY_PATH="/usr/lib/loute/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+exec ./loute "$@"
+EOF
+  chmod 755 "$pkgdir/usr/bin/$pkgname"
+
+  cat > "$pkgdir/usr/share/applications/$pkgname.desktop" <<'EOF'
+[Desktop Entry]
+Name=LOUTE
+Comment=Autonomous Bug Bounty Framework
+Exec=/usr/bin/loute
+Icon=loute
+Terminal=false
+Type=Application
+Categories=Utility;Security;Network;
+StartupNotify=true
+EOF
+
+  if [ -f "$repo_root/loute/assets/icons/logo.png" ]; then
+    install -Dm644 "$repo_root/loute/assets/icons/logo.png" \
+      "$pkgdir/usr/share/icons/hicolor/128x128/apps/$pkgname.png"
+  fi
+
+  find "$pkgdir/usr/lib/$pkgname" -type f -name '*.so*' -exec chmod 755 {} \; || true
+  chmod 755 "$pkgdir/usr/lib/$pkgname/$pkgname" || true
+}

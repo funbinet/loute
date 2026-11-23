@@ -1,0 +1,461 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>JRTS Report — Web Crawler</title>
+<style>
+  :root { color-scheme: dark; --bg:#0d1117; --panel:#141b27; --ink:#e6edf7; --muted:#8b949e; --line:#2b3648; --accent:#4bb3fd; --good:#3fb950; --warn:#d29922; --bad:#f85149; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Segoe UI', -apple-system, system-ui, sans-serif; background: var(--bg); color: var(--ink); line-height: 1.6; }
+  .wrap { max-width: 1200px; margin: 0 auto; padding: 2rem 2rem 3rem; }
+  a { color: var(--accent); }
+  code { font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.85em; background: rgba(255,255,255,0.06); padding: 0.15em 0.4em; border-radius: 4px; }
+
+  /* Header */
+  .rpt-header { display: flex; align-items: center; justify-content: space-between; padding: 1.5rem 0; border-bottom: 1px solid var(--line); margin-bottom: 1.5rem; }
+  .rpt-header__brand { display: flex; align-items: center; gap: 1rem; }
+  .rpt-header__logo { width: 48px; height: 48px; border-radius: 12px; overflow: hidden; background: #21262d; border: 2px solid #ff4444; flex-shrink: 0; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 16px rgba(255, 68, 68, 0.4), inset 0 0 8px rgba(255, 68, 68, 0.2); }
+  .rpt-header__logo img { width: 100%; height: 100%; object-fit: cover; }
+  .rpt-header h1 { font-size: 1.6rem; font-weight: 800; color: white; }
+  .rpt-header__sub { font-size: 0.82rem; color: var(--muted); }
+
+  /* Status Badges */
+  .status-badge { display: inline-flex; padding: 0.25rem 0.75rem; border-radius: 999px; font-size: 0.75rem; font-weight: 700; letter-spacing: 0.02em; text-transform: uppercase; }
+  .status-badge--completed { background: rgba(63,185,80,0.15); color: var(--good); border: 1px solid rgba(63,185,80,0.3); }
+  .status-badge--failed { background: rgba(248,81,73,0.15); color: var(--bad); border: 1px solid rgba(248,81,73,0.3); }
+  .status-badge--running, .status-badge--cancelled { background: rgba(210,153,34,0.15); color: var(--warn); border: 1px solid rgba(210,153,34,0.3); }
+
+  /* Summary Grid */
+  .summary-grid { display: grid; grid-template-columns: repeat(6, 1fr); gap: 0.75rem; margin-bottom: 1.5rem; }
+  .summary-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1rem; text-align: center; }
+  .summary-card__val { font-size: 1.8rem; font-weight: 800; }
+  .summary-card__label { font-size: 0.72rem; color: var(--muted); text-transform: uppercase; letter-spacing: 0.8px; margin-top: 0.2rem; }
+
+  /* Severity Bar */
+  .sev-bar-wrap { margin-bottom: 1.5rem; }
+  .sev-bar { display: flex; height: 8px; border-radius: 4px; overflow: hidden; background: var(--line); }
+  .sev-bar__seg { transition: width 0.3s; min-width: 2px; }
+  .sev-bar-legend { display: flex; gap: 1rem; margin-top: 0.5rem; font-size: 0.72rem; color: var(--muted); }
+  .sev-bar-legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 4px; vertical-align: middle; }
+
+  /* Headings */
+  h2 { font-size: 1.05rem; font-weight: 700; color: var(--accent); margin: 1.75rem 0 0.75rem; }
+
+  /* Cards */
+  .card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 1.25rem; overflow: hidden; }
+  .card--warn { border-color: rgba(210,153,34,0.4); background: rgba(210,153,34,0.05); }
+  .card ul { margin: 0; padding-left: 1.2rem; }
+  .card li { margin-bottom: 0.3rem; }
+
+  /* Tables */
+  .kv-table { width: 100%; border-collapse: collapse; }
+  .kv-table td { padding: 0.5rem 0.75rem; border-bottom: 1px solid rgba(43,54,72,0.5); font-size: 0.88rem; vertical-align: top; }
+  .kv-table td:first-child { color: var(--muted); font-weight: 600; width: 160px; white-space: nowrap; }
+  .table-scroll { overflow-x: auto; }
+  .data-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+  .data-table th { padding: 0.6rem 0.75rem; text-align: left; background: rgba(27,38,55,0.8); color: #dbe7ff; font-weight: 700; font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.5px; border-bottom: 2px solid var(--line); white-space: nowrap; }
+  .data-table td { padding: 0.55rem 0.75rem; border-bottom: 1px solid rgba(43,54,72,0.4); vertical-align: top; }
+  .data-table tbody tr:hover { background: rgba(88,166,255,0.04); }
+  .desc-cell { max-width: 280px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .cmd-cell { max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+  /* Badges */
+  .sev-badge { display: inline-flex; padding: 0.15rem 0.55rem; border-radius: 4px; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.04em; }
+  .sev-badge--critical { background: rgba(248,81,73,0.2); color: #f85149; }
+  .sev-badge--high { background: rgba(240,136,62,0.2); color: #f0883e; }
+  .sev-badge--medium { background: rgba(210,153,34,0.2); color: #d29922; }
+  .sev-badge--low { background: rgba(63,185,80,0.2); color: #3fb950; }
+  .sev-badge--info { background: rgba(139,148,158,0.2); color: #8b949e; }
+  .type-badge { background: rgba(75,179,253,0.12); color: var(--accent); padding: 0.12rem 0.5rem; border-radius: 4px; font-size: 0.72rem; font-weight: 600; text-transform: uppercase; }
+  .state-badge { font-size: 0.72rem; font-weight: 600; padding: 0.12rem 0.45rem; border-radius: 3px; background: rgba(139,148,158,0.12); color: var(--muted); }
+  .state-badge--ok { background: rgba(63,185,80,0.12); color: var(--good); }
+  .state-badge--err { background: rgba(248,81,73,0.12); color: var(--bad); }
+
+  /* Log Block */
+  .log-block { max-height: 360px; overflow: auto; background: #010409; border: 1px solid var(--line); border-radius: 8px; padding: 0.75rem 1rem; }
+  .log-block pre { white-space: pre-wrap; word-break: break-word; font-family: 'JetBrains Mono', 'Consolas', monospace; font-size: 0.78rem; line-height: 1.55; color: var(--muted); margin: 0; }
+  .log-ok { color: #3fb950; }
+  .log-err { color: #f85149; }
+  .log-info { color: #00ff41; }
+  .log-warn { color: #d29922; }
+
+  /* Evidence */
+  .evidence-details { margin-top: 0.75rem; border: 1px solid var(--line); border-radius: 8px; padding: 0.5rem 0.75rem; background: rgba(0,0,0,0.2); }
+  .evidence-details summary { cursor: pointer; font-weight: 600; font-size: 0.82rem; color: var(--accent); padding: 0.3rem 0; }
+  .evidence-block { margin-top: 0.5rem; padding: 0.5rem; border-bottom: 1px solid rgba(43,54,72,0.3); }
+  .evidence-block pre { font-size: 0.75rem; white-space: pre-wrap; word-break: break-word; color: var(--muted); }
+  .inline-json { font-size: 0.78rem; margin: 0; white-space: pre-wrap; word-break: break-word; }
+  .empty-msg { color: var(--muted); font-size: 0.88rem; font-style: italic; }
+
+  /* Footer */
+  .rpt-footer { margin-top: 2rem; padding-top: 1rem; border-top: 1px solid var(--line); text-align: center; font-size: 0.72rem; color: rgba(139,148,158,0.6); }
+
+  /* Responsive */
+  @media (max-width: 900px) { .summary-grid { grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 600px) { .summary-grid { grid-template-columns: repeat(2, 1fr); } .wrap { padding: 1rem; } .desc-cell, .cmd-cell { max-width: 150px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="rpt-header">
+  <div class="rpt-header__brand">
+    <div class="rpt-header__logo"><img src="/jabber.png" alt="Logo" /></div>
+    <div>
+      <h1>Web Crawler</h1>
+      <p class="rpt-header__sub">JABBER Red Teaming Suite v3.1.0 &middot; Created by Funbinet (dancan.tech)</p>
+    </div>
+  </div>
+  <span class="status-badge status-badge--completed">COMPLETED</span>
+</header>
+
+<div class="summary-grid">
+<div class="summary-card"><div class="summary-card__val" style="color:var(--accent)">38</div><div class="summary-card__label">Total Findings</div></div>
+<div class="summary-card"><div class="summary-card__val" style="color:#f85149">0</div><div class="summary-card__label">Critical</div></div>
+<div class="summary-card"><div class="summary-card__val" style="color:#f0883e">0</div><div class="summary-card__label">High</div></div>
+<div class="summary-card"><div class="summary-card__val" style="color:#d29922">0</div><div class="summary-card__label">Medium</div></div>
+<div class="summary-card"><div class="summary-card__val" style="color:#3fb950">0</div><div class="summary-card__label">Low</div></div>
+<div class="summary-card"><div class="summary-card__val" style="color:var(--muted)">1m 56s</div><div class="summary-card__label">Duration</div></div>
+</div>
+
+<div class="sev-bar-wrap">
+  <div class="sev-bar">
+    <div class="sev-bar__seg" style="width:100.0%;background:#8b949e" title="Info: 38"></div>
+  </div>
+  <div class="sev-bar-legend"><span><i style="background:#f85149"></i> Critical</span><span><i style="background:#f0883e"></i> High</span><span><i style="background:#d29922"></i> Medium</span><span><i style="background:#3fb950"></i> Low</span><span><i style="background:#8b949e"></i> Info</span></div>
+</div>
+
+<h2>Task Details</h2>
+<div class="card">
+<table class="kv-table">
+<tr><td>Task ID</td><td><code>f279bb88-572e-4611-aea8-5e8309bb8fb4</code></td></tr>
+<tr><td>Module</td><td>recon-web-crawler</td></tr>
+<tr><td>Module Name</td><td>Web Crawler</td></tr>
+<tr><td>Category</td><td>RECONNAISSANCE</td></tr>
+<tr><td>Target</td><td>dancan.tech</td></tr>
+<tr><td>Status</td><td><span class="status-badge status-badge--completed">COMPLETED</span></td></tr>
+<tr><td>Started</td><td>2026-04-29T00:48:43.723051990Z</td></tr>
+<tr><td>Completed</td><td>2026-04-29T00:50:40.464374335Z</td></tr>
+<tr><td>Duration</td><td>1m 56s</td></tr>
+</table>
+</div>
+
+<h2>Findings (38)</h2>
+<div class="card">
+<div class="table-scroll"><table class="data-table">
+<thead><tr><th>#</th><th>Type</th><th>Severity</th><th>Title</th><th>Description</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><span class="type-badge">form</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Form: http://dancan.tech/api/contact</td><td class="desc-cell">{
+  "type": "form",
+  "severity": "info",
+  "status": "confirmed",
+  "title": "Form: http://dancan.tech/api/contact",
+ …</td><td><span class="state-badge">confirmed</span></td></tr>
+<tr><td>2</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #1</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #1",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>3</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #2</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #2",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>4</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #3</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #3",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>5</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #4</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #4",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>6</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #5</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #5",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>7</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #6</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #6",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>8</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #7</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #7",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>9</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #8</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #8",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>10</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #9</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #9",
+  "comment": "\u00…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>11</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #10</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #10",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>12</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #11</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #11",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>13</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #12</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #12",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>14</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #13</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #13",
+  "comment": "Off…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>15</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #14</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #14",
+  "comment": "Blo…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>16</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #15</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #15",
+  "comment": "Uti…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>17</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #16</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #16",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>18</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #17</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #17",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>19</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #18</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #18",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>20</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #19</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #19",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>21</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #20</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #20",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>22</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #21</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #21",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>23</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #22</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #22",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>24</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #23</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #23",
+  "comment": "\u0…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>25</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #24</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #24",
+  "comment": "unp…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>26</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #25</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #25",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>27</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #26</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #26",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>28</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #27</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #27",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>29</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #28</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #28",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>30</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #29</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #29",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>31</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #30</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #30",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>32</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #31</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #31",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>33</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #32</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #32",
+  "comment": "api…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>34</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #33</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #33",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>35</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #34</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #34",
+  "comment": "wa.…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>36</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #35</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #35",
+  "comment": "git…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>37</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #36</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #36",
+  "comment": "cod…</td><td><span class="state-badge">review</span></td></tr>
+<tr><td>38</td><td><span class="type-badge">comment</span></td><td><span class="sev-badge sev-badge--info">INFO</span></td><td>Comment artifact #37</td><td class="desc-cell">{
+  "type": "comment",
+  "severity": "info",
+  "status": "review",
+  "title": "Comment artifact #37",
+  "comment": "unp…</td><td><span class="state-badge">review</span></td></tr>
+</tbody>
+</table></div>
+<details class="evidence-details"><summary>View Evidence Details</summary>
+<div class="evidence-block"><strong>Finding #1</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">confirmed</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">action</td><td style="font-family: 'JetBrains Mono', monospace;">http://dancan.tech/api/contact</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">method</td><td style="font-family: 'JetBrains Mono', monospace;">POST</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">fields</td><td style="font-family: 'JetBrains Mono', monospace;"><ul style="margin-left: 1rem;"><li>name</li><li>email</li><li>message</li></ul></td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">has csrf</td><td style="font-family: 'JetBrains Mono', monospace;">false</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">has password</td><td style="font-family: 'JetBrains Mono', monospace;">false</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #2</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== FAVICON ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #3</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== BOXICONS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #4</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== SWIPER CSS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #5</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== CSS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #6</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== HEADER ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #7</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== theme change button ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #8</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== MAIN ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #9</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== HOME ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #10</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== ABOUT ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #11</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== SKILLS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #12</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== SERVICES ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #13</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== WORK ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #14</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">Offensive Security</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #15</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">Blockchain &amp; IoT</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #16</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">Utility Tools</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #17</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== TESTIMONIALS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #18</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== CONTACT ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #19</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== FOOTER ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #20</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== SCROLLREVEAL ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #21</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">&lt;script src="assets/js/scrollreveal.min.js"&gt;&lt;/script&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #22</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== SWIPER JS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #23</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== MIXITUP FILTER ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #24</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">=============== MAIN JS ===============</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #25</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">unpkg.com/boxicons@2.1.2/css/boxicons.min.css' rel='stylesheet'&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #26</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet" target="_blank" rel="noopener" class="home__social-link" title="GitHub"&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #27</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/leviathan" target="_blank" rel="noopener" class="work__button"&gt;Leviathan &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #28</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/omnisec" target="_blank" rel="noopener" class="work__button"&gt;Omnisec &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #29</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/hanzo" target="_blank" rel="noopener" class="work__button"&gt;Hanzo &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #30</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/niobium" target="_blank" rel="noopener" class="work__button"&gt;Niobium &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #31</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/jabber-framework" target="_blank" rel="noopener" class="work__button"&gt;Jabber &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #32</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet/stich" target="_blank" rel="noopener" class="work__button"&gt;Stich &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #33</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">api.whatsapp.com/send?phone=254707657191&amp;text=Hello%20Dancan" target="_blank" rel="noopener" class="contact__button"&gt;Chat Me &lt;i class='bx bx-right-arrow contact__button-icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #34</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet" target="_blank" rel="noopener" class="contact__button"&gt;View Profile &lt;i class='bx bx-right-arrow contact__button-icon'&gt;&lt;/i&gt;&lt;/a&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #35</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">wa.me/254707657191" target="_blank" rel="noopener" class="footer__social-link" aria-label="WhatsApp"&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #36</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">github.com/funbinet" target="_blank" rel="noopener" class="footer__social-link" aria-label="GitHub"&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #37</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">codeberg.org/funbinet" target="_blank" rel="noopener" class="footer__social-link" aria-label="Codeberg"&gt;</td></tr></tbody></table></div>
+<div class="evidence-block"><strong>Finding #38</strong><table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">status</td><td style="font-family: 'JetBrains Mono', monospace;">review</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comment</td><td style="font-family: 'JetBrains Mono', monospace;">unpkg.com/scrollreveal/dist/scrollreveal.min.js"&gt;&lt;/script&gt;</td></tr></tbody></table></div>
+</details>
+</div>
+
+<h2>Processing Results</h2>
+<div class="card">
+<table class="data-table" style="margin-top: 0.5rem; border: 1px solid var(--line); border-radius: 4px; overflow: hidden; display: table;"><tbody><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">target</td><td style="font-family: 'JetBrains Mono', monospace;">http://dancan.tech</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">host</td><td style="font-family: 'JetBrains Mono', monospace;">dancan.tech</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">depth</td><td style="font-family: 'JetBrains Mono', monospace;">10</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">concurrency</td><td style="font-family: 'JetBrains Mono', monospace;">10</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">timeout seconds</td><td style="font-family: 'JetBrains Mono', monospace;">30</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">requested output format</td><td style="font-family: 'JetBrains Mono', monospace;">json</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">urls discovered</td><td style="font-family: 'JetBrains Mono', monospace;">0</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">forms found</td><td style="font-family: 'JetBrains Mono', monospace;">1</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">technologies detected</td><td style="font-family: 'JetBrains Mono', monospace;">0</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comments extracted</td><td style="font-family: 'JetBrains Mono', monospace;">37</td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">urls</td><td style="font-family: 'JetBrains Mono', monospace;"><ul style="margin-left: 1rem;"></ul></td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">forms</td><td style="font-family: 'JetBrains Mono', monospace;"><ul style="margin-left: 1rem;"><li>{action=http://dancan.tech/api/contact, method=POST, fields=[name, email, message], has_csrf=false, has_password=false}</li></ul></td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">technologies</td><td style="font-family: 'JetBrains Mono', monospace;"><ul style="margin-left: 1rem;"></ul></td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">comments</td><td style="font-family: 'JetBrains Mono', monospace;"><ul style="margin-left: 1rem;"><li>=============== FAVICON ===============</li><li>=============== BOXICONS ===============</li><li>=============== SWIPER CSS ===============</li><li>=============== CSS ===============</li><li>=============== HEADER ===============</li><li>=============== theme change button ===============</li><li>=============== MAIN ===============</li><li>=============== HOME ===============</li><li>=============== ABOUT ===============</li><li>=============== SKILLS ===============</li><li>=============== SERVICES ===============</li><li>=============== WORK ===============</li><li>Offensive Security</li><li>Blockchain &amp; IoT</li><li>Utility Tools</li><li>=============== TESTIMONIALS ===============</li><li>=============== CONTACT ===============</li><li>=============== FOOTER ===============</li><li>=============== SCROLLREVEAL ===============</li><li>&lt;script src="assets/js/scrollreveal.min.js"&gt;&lt;/script&gt;</li><li>=============== SWIPER JS ===============</li><li>=============== MIXITUP FILTER ===============</li><li>=============== MAIN JS ===============</li><li>unpkg.com/boxicons@2.1.2/css/boxicons.min.css' rel='stylesheet'&gt;</li><li>github.com/funbinet" target="_blank" rel="noopener" class="home__social-link" title="GitHub"&gt;</li><li>github.com/funbinet/leviathan" target="_blank" rel="noopener" class="work__button"&gt;Leviathan &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet/omnisec" target="_blank" rel="noopener" class="work__button"&gt;Omnisec &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet/hanzo" target="_blank" rel="noopener" class="work__button"&gt;Hanzo &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet/niobium" target="_blank" rel="noopener" class="work__button"&gt;Niobium &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet/jabber-framework" target="_blank" rel="noopener" class="work__button"&gt;Jabber &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet/stich" target="_blank" rel="noopener" class="work__button"&gt;Stich &lt;i class='bx bx-right-arrow work__icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>api.whatsapp.com/send?phone=254707657191&amp;text=Hello%20Dancan" target="_blank" rel="noopener" class="contact__button"&gt;Chat Me &lt;i class='bx bx-right-arrow contact__button-icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>github.com/funbinet" target="_blank" rel="noopener" class="contact__button"&gt;View Profile &lt;i class='bx bx-right-arrow contact__button-icon'&gt;&lt;/i&gt;&lt;/a&gt;</li><li>wa.me/254707657191" target="_blank" rel="noopener" class="footer__social-link" aria-label="WhatsApp"&gt;</li><li>github.com/funbinet" target="_blank" rel="noopener" class="footer__social-link" aria-label="GitHub"&gt;</li><li>codeberg.org/funbinet" target="_blank" rel="noopener" class="footer__social-link" aria-label="Codeberg"&gt;</li><li>unpkg.com/scrollreveal/dist/scrollreveal.min.js"&gt;&lt;/script&gt;</li></ul></td></tr><tr><td style="font-weight:700; width: 180px; background: rgba(27,38,55,0.4); text-transform: capitalize;">urls crawled</td><td style="font-family: 'JetBrains Mono', monospace;">0</td></tr></tbody></table></div>
+
+<h2>Command Execution Log (5)</h2>
+<div class="card">
+<div class="table-scroll"><table class="data-table">
+<thead><tr><th>#</th><th>Tool</th><th>Command</th><th>Status</th><th>Exit</th><th>Duration (ms)</th><th>Stdout Preview</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><code>gospider</code></td><td class="cmd-cell"><code>/home/bane/jrts/jrts-core/jrts-tools/recon/gospider -s http://dancan.tech -d 10 -t 10</code></td><td><span class="state-badge state-badge--err">timeout</span></td><td>n/a</td><td>30007</td><td class="desc-cell"></td></tr>
+<tr><td>2</td><td><code>katana</code></td><td class="cmd-cell"><code>/home/bane/jrts/jrts-core/jrts-tools/recon/katana -u http://dancan.tech -d 10 -c 10 -silent</code></td><td><span class="state-badge state-badge--err">timeout</span></td><td>n/a</td><td>30011</td><td class="desc-cell"></td></tr>
+<tr><td>3</td><td><code>waybackurls</code></td><td class="cmd-cell"><code>/home/bane/jrts/jrts-core/jrts-tools/recon/waybackurls dancan.tech</code></td><td><span class="state-badge state-badge--ok">success</span></td><td>n/a</td><td>21775</td><td class="desc-cell"></td></tr>
+<tr><td>4</td><td><code>gau</code></td><td class="cmd-cell"><code>/home/bane/jrts/jrts-core/jrts-tools/recon/gau dancan.tech</code></td><td><span class="state-badge state-badge--err">timeout</span></td><td>n/a</td><td>30004</td><td class="desc-cell"></td></tr>
+<tr><td>5</td><td><code>httpx</code></td><td class="cmd-cell"><code>/snap/bin/httpx -l /tmp/jrts_httpx_urls_8142721301236779725.txt -json -silent -tech-detect -timeout 30 -threads 10 -follow-redirects</code></td><td><span class="state-badge state-badge--err">failed</span></td><td>n/a</td><td>846</td><td class="desc-cell"></td></tr>
+</tbody>
+</table></div>
+</div>
+
+<h2>Execution Events</h2>
+<div class="card">
+<div class="log-block"><pre><span class="log-info">[*] Starting Web Crawler module</span>
+<span class="log-info">[*] Target: dancan.tech</span>
+<span class="log-info">[*] Depth: 10, Concurrency: 10, Timeout: 30s</span>
+<span class="log-info">[*] Normalized target: http://dancan.tech</span>
+<span class="log-info">[*] Target validation complete</span>
+<span class="log-info">[*] Tool readiness check complete</span>
+<span class="log-info">[*] Running GoSpider crawler...</span>
+<span class="log-info">[*] Running Katana crawler...</span>
+<span class="log-info">[*] Querying Wayback URLs...</span>
+<span class="log-info">[*] Querying GAU URL sources...</span>
+<span class="log-warn">[~] gau: time="2026-04-29T03:50:07+03:00" level=warning msg="error reading config: Config file /home/bane/.gau.toml not found, using default config"</span>
+<span class="log-info">[*] Running httpx technology detection...</span>
+<span class="log-warn">[~] httpx: [[1;31mFTL[0m] No input provided: no files found</span>
+<span class="log-info">[*] HTML artifact extraction completed</span>
+<span class="log-ok">[+] Web crawling completed with 38 findings</span>
+</pre></div>
+</div>
+
+<footer class="rpt-footer">JABBER Red Teaming Suite v3.1.0 &middot; Funbinet (dancan.tech) &middot; 2026-04-29T00:50:44.383286105Z</footer>
+</div>
+</body>
+</html>

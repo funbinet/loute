@@ -1,0 +1,37 @@
+# Outputs and Temporary Files
+outputs/
+outputs/reports/
+outputs/temp/
+packaging/*.deb
+packaging/*.apk
+packaging/*.zip
+packaging/*_amd64/
+packaging/*_windows_v*/
+
+# Rust
+rust/target/
+rust/**/*.rs.bk
+
+# Flutter/Dart
+loute/.dart_tool/
+loute/.flutter-plugins
+loute/.flutter-plugins-dependencies
+loute/.pub-cache/
+loute/.pub/
+loute/build/
+loute/android/app/release.keystore
+
+# IDEs and Editors
+.idea/
+.vscode/
+*.iml
+*.swp
+
+# OS generated files
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
